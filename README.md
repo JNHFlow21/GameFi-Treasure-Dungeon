@@ -1,66 +1,109 @@
-## Foundry
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+# GameFi Treasure Dungeon
 
-Foundry consists of:
+GameFi Treasure Dungeon 是一个基于 Solidity & Foundry 构建的链上小游戏。玩家支付固定门票（约 10 美元等值的 ETH）进入地牢探险：
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+1. 进入地牢 (`EnterDungeon`) 后会立即通过 **Chainlink VRF V2.5** 进行随机返现；
+2. 部分 ETH 会锁仓到 **Jackpot 奖池**；
+3. **Chainlink Automation** 定期触发抽奖，再次调用 VRF 随机选出一名在线玩家赢取整池奖励；
+4. 支持提现、退出等完整的游戏闭环。
 
-## Documentation
+## 功能亮点
 
-https://book.getfoundry.sh/
+| 合约 | 作用 |
+|------|------|
+| `EnterDungeon` | 玩家入口，管理玩家状态、随机返现、提现等 |
+| `JackpotPool`  | Jackpot 奖池，负责锁仓、定时抽奖与派奖 |
+| `PriceConverter` | ETH/USD 价格转换库（基于 Chainlink 预言机） |
 
-## Usage
+- **去中心化随机数**：Chainlink VRF V2.5
+- **自动化执行**：Chainlink Automation (Keepers)
+- **实时价格**：Chainlink ETH/USD 预言机
+- **极速开发**：Foundry (Forge/Cast/Anvil)
 
-### Build
+## 目录结构
 
-```shell
-$ forge build
+```text
+├── src/                # 核心合约
+├── script/             # 部署脚本 (Forge Script)
+├── test/               # 单元测试
+├── broadcast/          # Forge 脚本执行输出
+├── Makefile            # 常用命令封装
+└── foundry.toml        # Foundry 配置
 ```
 
-### Test
+## 快速开始（Quickstart）
 
-```shell
-$ forge test
+> 以下所有命令均已写入 `Makefile`，可直接 `make <target>` 执行。
+
+1. 克隆仓库并进入目录
+
+```bash
+git clone https://github.com/JNHFlow21/GameFi-Treasure-Dungeon.git
+cd GameFi-Treasure-Dungeon
 ```
 
-### Format
+2. 安装依赖
 
-```shell
-$ forge fmt
+```bash
+make install        # 安装 Forge 子模块依赖
 ```
 
-### Gas Snapshots
+3. 编译合约
 
-```shell
-$ forge snapshot
+```bash
+make build
 ```
 
-### Anvil
+4. 运行测试
 
-```shell
-$ anvil
+```bash
+make test
 ```
 
-### Deploy
+5. 本地启动链并部署
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+```bash
+make anvil          # 启动本地 Anvil 链（已预置测试助记词）
+# 另开终端窗口
+make deploy-anvil   # 部署合约到本地链
 ```
 
-### Cast
+6. 测试网 / 主网部署
 
-```shell
-$ cast <subcommand>
+在根目录创建按照`.env.example` 创建 `.env` 文件并填写以下变量：
+
+```ini
+# 示例 .env
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/<ALCHEMY_KEY>
+SEPOLIA_PRIVATE_KEY=0x<PRIVATE_KEY>
+SEPOLIA_VRF_SUBSCRIPTION_ID=<SUB_ID>
+
+MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/<ALCHEMY_KEY>
+MAINNET_PRIVATE_KEY=0x<PRIVATE_KEY>
+MAINNET_VRF_SUBSCRIPTION_ID=<SUB_ID>
 ```
 
-### Help
+然后执行：
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
+```bash
+make deploy-sepolia   # 部署到 Sepolia
 ```
+
+7. 其他实用命令
+
+```bash
+make snapshot         # 生成 Gas 快照
+make format           # 格式化代码
+make check-balance    # 查询钱包余额
+make pk-to-address    # 私钥转地址
+make help             # 查看全部可用命令
+```
+
+## 依赖与参考
+
+- [Foundry](https://github.com/foundry-rs/foundry)
+- [Chainlink Contracts](https://github.com/smartcontractkit/chainlink-brownie-contracts)
+- [solmate](https://github.com/transmissions11/solmate)
+
+---
