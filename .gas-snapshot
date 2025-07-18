@@ -1,0 +1,6 @@
+EnterDungeonTest:test_EnterDungeon_Fail_AlreadyEntered() (gas: 371712)
+EnterDungeonTest:test_EnterDungeon_Fail_NotEnoughEthSent() (gas: 47059)
+EnterDungeonTest:test_EnterDungeon_Success() (gas: 373493)
+EnterDungeonTest:test_ExitDungeon_Success() (gas: 312204)
+EnterDungeonTest:test_VRF() (gas: 351921)
+EnterDungeonTest:test_Withdraw_Success() (gas: 360572)
