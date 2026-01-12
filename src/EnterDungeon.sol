@@ -18,6 +18,8 @@ error EnterDungeon__TransferFailed();
 error EnterDungeon__RequestPending();
 error EnterDungeon__NotJackpotPool();
 error EnterDungeon__AllTransferFailed();
+error EnterDungeon__ZeroAddress();
+error EnterDungeon__NoAvailableBalance();
 
 contract EnterDungeon is VRFConsumerBaseV2Plus {
     /* Type Declarations */
@@ -46,6 +48,7 @@ contract EnterDungeon is VRFConsumerBaseV2Plus {
     // 锁仓玩家列表
     address[] public s_snapshotPlayersAddress;
     uint256 private s_snapshotPoolBalance; // 锁仓奖池金额
+    uint256 private s_totalPendingRewards;
     // Jackpot Pool Variables
     address public jackpotPoolAddress;
 
@@ -55,7 +58,9 @@ contract EnterDungeon is VRFConsumerBaseV2Plus {
     uint32 private immutable i_callbackGasLimit;
     uint16 private constant REQUEST_CONFIRMATIONS = 3;
     uint32 private constant NUM_WORDS = 1;
-    bool private s_enableNativePayment; // true:ETH, false:LINK
+    bool private s_enableNativePayment = false; // true:ETH, false:LINK
+
+    event JackpotPoolSet(address indexed pool);
 
     // 继承自 ConfirmedOwner 的 onlyOwner 修饰符可直接使用，无需再次声明
     modifier onlyJackpotPool() {
@@ -72,6 +77,9 @@ contract EnterDungeon is VRFConsumerBaseV2Plus {
         bytes32 _gasLane,
         uint32 _callbackGasLimit
     ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
+        if (_priceFeed == address(0) || _vrfCoordinator == address(0)) {
+            revert EnterDungeon__ZeroAddress();
+        }
         s_priceFeed = _priceFeed;
         i_subscriptionId = _subscriptionId;
         i_gasLane = _gasLane;
@@ -80,7 +88,11 @@ contract EnterDungeon is VRFConsumerBaseV2Plus {
 
     function setJackpotPool(address _pool) external onlyOwner {
         require(jackpotPoolAddress == address(0), "already set");
+        if (_pool == address(0)) {
+            revert EnterDungeon__ZeroAddress();
+        }
         jackpotPoolAddress = _pool;
+        emit JackpotPoolSet(_pool);
     }
 
     function enterDungeon() public payable {
@@ -153,19 +165,22 @@ contract EnterDungeon is VRFConsumerBaseV2Plus {
 
         // 2、根据随机数计算返现金额
         uint256 randomNumber = randomWords[0] % 100;
+        uint256 reward;
         if (randomNumber < 50) {
             // 50% 概率获得 0.3倍的返现
-            s_totalPlayers[playerAddress].balance += s_totalPlayers[playerAddress].enterFee * 3 / 10;
+            reward = s_totalPlayers[playerAddress].enterFee * 3 / 10;
         } else if (randomNumber < 80) {
             // 30% 概率获得 0.5倍的返现
-            s_totalPlayers[playerAddress].balance += s_totalPlayers[playerAddress].enterFee * 5 / 10;
+            reward = s_totalPlayers[playerAddress].enterFee * 5 / 10;
         } else if (randomNumber < 90) {
             // 10% 概率获得 0.8倍的返现
-            s_totalPlayers[playerAddress].balance += s_totalPlayers[playerAddress].enterFee * 8 / 10;
+            reward = s_totalPlayers[playerAddress].enterFee * 8 / 10;
         } else {
             // 10% 概率获得 0.1 倍的返现
-            s_totalPlayers[playerAddress].balance += s_totalPlayers[playerAddress].enterFee * 1 / 10;
+            reward = s_totalPlayers[playerAddress].enterFee * 1 / 10;
         }
+        s_totalPlayers[playerAddress].balance += reward;
+        s_totalPendingRewards += reward;
 
         // 更新玩家状态 & 清除 pending 标记
         s_totalPlayers[playerAddress].lastUpdateTime = block.timestamp;
@@ -180,13 +195,19 @@ contract EnterDungeon is VRFConsumerBaseV2Plus {
     function getSnapshotofCurrentPlayersCountAndPoolBalance() public onlyJackpotPool returns (uint256, uint256) {
         // 快照此时的在线玩家列表
         s_snapshotPlayersAddress = s_currentPlayersAddress;
-        s_snapshotPoolBalance = (address(this).balance * 80) / 100;
+        uint256 contractBalance = address(this).balance;
+        if (contractBalance < s_totalPendingRewards) {
+            revert EnterDungeon__NotEnoughBalance();
+        }
+        uint256 freeBalance = contractBalance - s_totalPendingRewards;
+        s_snapshotPoolBalance = (freeBalance * 80) / 100;
         return (s_snapshotPlayersAddress.length, s_snapshotPoolBalance);
     }
 
     function payWinnerByIndex(uint256 index) public onlyJackpotPool returns (address) {
         address winnerAddress = s_snapshotPlayersAddress[index];
         s_totalPlayers[winnerAddress].balance += s_snapshotPoolBalance;
+        s_totalPendingRewards += s_snapshotPoolBalance;
 
         // 清空锁仓玩家列表和余额
         s_snapshotPlayersAddress = new address[](0);
@@ -231,6 +252,7 @@ contract EnterDungeon is VRFConsumerBaseV2Plus {
         }
         // Effects
         s_totalPlayers[msg.sender].balance = 0;
+        s_totalPendingRewards -= balance;
 
         // Interactions
         (bool success,) = payable(msg.sender).call{value: balance}("");
@@ -241,7 +263,12 @@ contract EnterDungeon is VRFConsumerBaseV2Plus {
 
     function withdrawAll() external onlyOwner {
         uint256 balance = address(this).balance;
-        (bool success,) = payable(msg.sender).call{value: balance}("");
+        uint256 reservedBalance = s_totalPendingRewards + s_snapshotPoolBalance;
+        if (balance <= reservedBalance) {
+            revert EnterDungeon__NoAvailableBalance();
+        }
+        uint256 availableBalance = balance - reservedBalance;
+        (bool success,) = payable(msg.sender).call{value: availableBalance}("");
         if (!success) {
             revert EnterDungeon__AllTransferFailed();
         }

@@ -47,7 +47,7 @@ contract JackpotPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     uint32 private immutable i_callbackGasLimit;
     uint16 private constant REQUEST_CONFIRMATIONS = 3;
     uint32 private constant NUM_WORDS = 1;
-    bool private s_enableNativePayment; // true:ETH, false:LINK
+    bool private s_enableNativePayment = false; // true:ETH, false:LINK
 
     constructor(
         address _enterDungeon,
@@ -104,6 +104,12 @@ contract JackpotPool is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
             s_state = State.LOCKED;
             // 锁仓
             (s_snapshotPlayersCount, s_winnings) = i_enterDungeon.getSnapshotofCurrentPlayersCountAndPoolBalance();
+            if (s_snapshotPlayersCount == 0) {
+                s_state = State.OPEN;
+                s_winnings = 0;
+                s_lastTimeStamp = block.timestamp;
+                s_nextDrawTime = block.timestamp + i_interval;
+            }
         } else if (
             step == STEP_DRAW && s_state == State.LOCKED && block.timestamp >= s_nextDrawTime
                 && s_snapshotPlayersCount > 0
